@@ -46,6 +46,8 @@ const bookingSchema = new mongoose.Schema(
       index: true,
     },
 
+    razorpayPaymentId: { type: String, default: "" },
+
     // Who cancelled: "user" or "admin" — helps frontend show distinct badge
     cancelledBy: { type: String, enum: ["user", "admin", null], default: null },
     cancelReason: { type: String, default: "" },

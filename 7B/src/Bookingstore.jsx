@@ -183,6 +183,79 @@ export async function saveBooking(user, bookingData) {
   }
 }
 
+/**
+ * Confirms a booking after successful payment.
+ */
+export async function confirmBookingPayment(user, bookingId, razorpayPaymentId) {
+  if (!user) throw new Error("NOT_LOGGED_IN");
+
+  let token;
+  try {
+    token = await user.getIdToken(true);
+  } catch {
+    throw new Error("AUTH_ERROR");
+  }
+
+  const res = await fetch(`${API_BASE}/bookings/${bookingId}/confirm-payment`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+    },
+    body: JSON.stringify({ razorpayPaymentId }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    if (errBody.error === "OVERRIDDEN") {
+      throw new Error("OVERRIDDEN");
+    }
+    throw new Error(errBody.error || "Failed to confirm payment");
+  }
+
+  const updated = await res.json();
+
+  // Update local storage status to match confirmed status
+  const all = ls_get("sb_bookings", []);
+  const idx = all.findIndex(b => (b._id || b.id) === bookingId);
+  if (idx >= 0) {
+    all[idx] = { ...all[idx], status: "confirmed", razorpayPaymentId };
+    ls_set("sb_bookings", all);
+  }
+
+  return updated;
+}
+
+/**
+ * Deletes/Releases a pending booking when payment is cancelled or abandoned.
+ */
+export async function cancelPendingBooking(user, bookingId) {
+  if (!user) return;
+
+  let token;
+  try {
+    token = await user.getIdToken(true);
+  } catch {
+    return;
+  }
+
+  try {
+    await fetch(`${API_BASE}/bookings/${bookingId}/cancel-pending`, {
+      method: "DELETE",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+      },
+    });
+
+    // Remove from local storage
+    const all = ls_get("sb_bookings", []);
+    const filtered = all.filter(b => (b._id || b.id) !== bookingId);
+    ls_set("sb_bookings", filtered);
+  } catch (err) {
+    console.error("Failed to cancel pending booking on server:", err);
+  }
+}
+
 function _appendLocalBooking(booking) {
   const all      = ls_get("sb_bookings", []);
   const filtered = all.filter(b => (b._id || b.id) !== (booking._id || booking.id));

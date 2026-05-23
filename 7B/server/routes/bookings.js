@@ -40,6 +40,12 @@ router.get("/availability", async (req, res) => {
       return res.status(400).json({ error: "spaceId and date are required" });
     }
 
+    // Clean up expired pending bookings (older than 10 minutes)
+    await Booking.deleteMany({
+      status: "pending",
+      createdAt: { $lt: new Date(Date.now() - 10 * 60 * 1000) }
+    });
+
     // All active bookings for this space+date
     const bookings = await Booking.find({
       spaceId,
@@ -165,15 +171,44 @@ router.post("/", verifyToken, async (req, res) => {
 
     // ── Slot conflict check (skip for "cafe" which has no seat map) ───────
     if (unitId && slots && slots.length > 0 && spaceId !== "cafe") {
-      const conflict = await Booking.findOne({
+      // Clean up expired pending bookings first
+      await Booking.deleteMany({
+        status: "pending",
+        createdAt: { $lt: new Date(Date.now() - 10 * 60 * 1000) }
+      });
+
+      // Find any conflicting bookings that are active (not cancelled)
+      const conflicts = await Booking.find({
         spaceId,
         unitId,
         date,
         status: { $ne: "cancelled" },
         slots: { $in: slots },
       });
-      if (conflict) {
-        return res.status(409).json({ error: "SLOT_UNAVAILABLE" });
+
+      if (conflicts.length > 0) {
+        // If there is any confirmed or completed booking, the slot is locked permanently
+        const hasConfirmedConflict = conflicts.some(b => b.status === "confirmed" || b.status === "completed");
+        if (hasConfirmedConflict) {
+          return res.status(409).json({ error: "SLOT_UNAVAILABLE" });
+        }
+
+        // If conflicts are only pending, check if the incoming booking is paying strictly more
+        const requestTotal = grandTotal || 0;
+        const allPendingCanBeOverridden = conflicts.every(b => b.status === "pending" && requestTotal > (b.grandTotal || 0));
+
+        if (allPendingCanBeOverridden) {
+          // Preempt/Cancel the lower-paying pending bookings
+          for (const pendingBk of conflicts) {
+            pendingBk.status = "cancelled";
+            pendingBk.cancelledBy = "admin";
+            pendingBk.cancelReason = "Overridden by a higher-value booking slot request";
+            await pendingBk.save();
+            console.log(`⚡ Preempted pending booking ${pendingBk._id} (Value: ₹${pendingBk.grandTotal}) for higher-value request (Value: ₹${requestTotal})`);
+          }
+        } else {
+          return res.status(409).json({ error: "SLOT_UNAVAILABLE" });
+        }
       }
     }
 
@@ -202,6 +237,85 @@ router.post("/", verifyToken, async (req, res) => {
   } catch (err) {
     console.error("Create booking error:", err);
     res.status(500).json({ error: err.message || "Failed to create booking" });
+  }
+});
+
+// ── PUT /api/bookings/:id/confirm-payment ───────────────────────────────
+router.put("/:id/confirm-payment", verifyToken, async (req, res) => {
+  try {
+    const { razorpayPaymentId } = req.body;
+    if (!razorpayPaymentId) {
+      return res.status(400).json({ error: "razorpayPaymentId is required" });
+    }
+
+    const booking = await Booking.findOne({
+      _id: req.params.id,
+      userId: req.user.uid,
+    });
+
+    if (!booking) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    // Check if the booking was overridden/cancelled while the user was on the payment screen
+    if (booking.status === "cancelled") {
+      if (booking.cancelReason && booking.cancelReason.includes("Overridden")) {
+        console.warn(`⚠️ User tried to pay for overridden booking ${booking._id}. Payment ID: ${razorpayPaymentId}`);
+        return res.status(400).json({
+          error: "OVERRIDDEN",
+          message: "Your reservation was released due to a higher-priority booking slot request before payment was completed. An automatic refund will be processed.",
+        });
+      }
+      return res.status(400).json({ error: "Booking is already cancelled" });
+    }
+
+    if (booking.status !== "pending") {
+      return res.status(400).json({ error: `Booking is already ${booking.status}` });
+    }
+
+    booking.status = "confirmed";
+    booking.razorpayPaymentId = razorpayPaymentId;
+    await booking.save();
+
+    console.log("✅ Booking confirmed:", booking._id, "with payment:", razorpayPaymentId);
+
+    // Send confirmation email
+    try {
+      await sendBookingConfirmation(booking);
+    } catch (emailError) {
+      console.error("Failed to send confirmation email:", emailError);
+    }
+
+    res.json(booking);
+  } catch (err) {
+    console.error("Confirm payment error:", err);
+    res.status(500).json({ error: "Failed to confirm payment" });
+  }
+});
+
+// ── DELETE /api/bookings/:id/cancel-pending ─────────────────────────────
+router.delete("/:id/cancel-pending", verifyToken, async (req, res) => {
+  try {
+    const booking = await Booking.findOne({
+      _id: req.params.id,
+      userId: req.user.uid,
+    });
+
+    if (!booking) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    if (booking.status !== "pending") {
+      return res.status(400).json({ error: "Only pending bookings can be cancelled/deleted during payment flow" });
+    }
+
+    await Booking.deleteOne({ _id: booking._id });
+    console.log("🗑️ Pending booking deleted/released:", booking._id);
+
+    res.json({ message: "Pending booking deleted successfully" });
+  } catch (err) {
+    console.error("Delete pending booking error:", err);
+    res.status(500).json({ error: "Failed to delete pending booking" });
   }
 });
 

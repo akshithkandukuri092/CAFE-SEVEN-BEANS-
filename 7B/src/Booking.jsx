@@ -7,6 +7,8 @@ import {
   UNITS_FOR_TYPE,
   getTodayString,
   getPublicSettings,
+  confirmBookingPayment,
+  cancelPendingBooking,
 } from "./Bookingstore";
 import { Cake, Coffee, Lock, Megaphone } from "lucide-react";
 import "./Booking.css";
@@ -450,28 +452,32 @@ export default function Booking() {
     }
   };
 
-  // ── FIX: pass full `user` object (not user.uid) to saveBooking ──
+  // ── Secure Confirm Flow: Reserve pending booking, pay, then confirm ──
   const handleConfirm = async () => {
-    // If total is 0 (free spaces like "Just Coffee"), skip payment
+    setSaving(true);
+    setBookingError("Checking slot availability & reserving slot...");
+
+    const foodItems = Object.entries(addons).map(([id, { qty, price }]) => {
+      const item = MENU_ITEMS.find(m => m.id === id);
+      return { id, name: item.name, qty, price };
+    });
+
+    const bookingPayload = {
+      spaceId, spaceLabel: space.label,
+      spaceIcon: typeof space.icon === "string" ? space.icon : "",
+      unitId: selectedUnit, unitLabel,
+      unitIcon: typeof unitIcon === "string" ? unitIcon : "",
+      date, slot: firstSlot, slots: sortedSlots,
+      duration: durationLabel, durationHrs: totalHours,
+      guests, spacePrice, foodItems, foodTotal, grandTotal,
+      userName: user.displayName || user.email.split("@")[0],
+      userEmail: user.email,
+    };
+
+    // If total is 0 (free spaces like "Just Coffee"), skip payment and create direct confirmed booking
     if (grandTotal === 0) {
-      setSaving(true);
-      setBookingError("");
-      const foodItems = Object.entries(addons).map(([id, { qty, price }]) => {
-        const item = MENU_ITEMS.find(m => m.id === id);
-        return { id, name: item.name, qty, price };
-      });
       try {
-        await saveBooking(user, {
-          spaceId, spaceLabel: space.label,
-          spaceIcon: typeof space.icon === "string" ? space.icon : "",
-          unitId: selectedUnit, unitLabel,
-          unitIcon: typeof unitIcon === "string" ? unitIcon : "",
-          date, slot: firstSlot, slots: sortedSlots,
-          duration: durationLabel, durationHrs: totalHours,
-          guests, spacePrice, foodItems, foodTotal, grandTotal,
-          userName: user.displayName || user.email.split("@")[0],
-          userEmail: user.email,
-        });
+        await saveBooking(user, bookingPayload);
         navigate("/dashboard", { state: { justBooked: true } });
       } catch (err) {
         if (err.message === "BOOKING_SAVED_OFFLINE") {
@@ -484,10 +490,27 @@ export default function Booking() {
       return;
     }
 
-    // Open Razorpay payment popup
+    // Step 1: Create pending booking in database to block/secure the slot
+    let pendingBooking;
+    try {
+      pendingBooking = await saveBooking(user, bookingPayload);
+    } catch (err) {
+      if (err.message === "SLOT_UNAVAILABLE") {
+        setBookingError("The selected slot is no longer available. Please pick another seat or slot.");
+      } else {
+        setBookingError(`Failed to initiate booking: ${err.message}`);
+      }
+      setSaving(false);
+      return;
+    }
+
+    const bookingId = pendingBooking._id || pendingBooking.id;
+
+    // Step 2: Open Razorpay payment popup
+    setBookingError("");
     const options = {
-      key: "rzp_test_SgnU60Z0cnw89b", // 🔑 Paste your Key ID here
-      amount: grandTotal * 100,              // Razorpay uses paise (multiply by 100)
+      key: "rzp_test_SgnU60Z0cnw89b", // 🔑 Razorpay Key ID
+      amount: grandTotal * 100,       // Razorpay expects amount in paise
       currency: "INR",
       name: "Cafe Seven Beans",
       description: `Booking: ${space.label}`,
@@ -499,36 +522,34 @@ export default function Booking() {
       theme: { color: "#6b3a1f" },
 
       handler: async function (response) {
-        // Payment succeeded — now save booking
         setSaving(true);
-        setBookingError("");
-        const foodItems = Object.entries(addons).map(([id, { qty, price }]) => {
-          const item = MENU_ITEMS.find(m => m.id === id);
-          return { id, name: item.name, qty, price };
-        });
+        setBookingError("Verifying payment transaction and confirming slot...");
         try {
-          await saveBooking(user, {
-            spaceId, spaceLabel: space.label,
-            spaceIcon: typeof space.icon === "string" ? space.icon : "",
-            unitId: selectedUnit, unitLabel,
-            unitIcon: typeof unitIcon === "string" ? unitIcon : "",
-            date, slot: firstSlot, slots: sortedSlots,
-            duration: durationLabel, durationHrs: totalHours,
-            guests, spacePrice, foodItems, foodTotal, grandTotal,
-            userName: user.displayName || user.email.split("@")[0],
-            userEmail: user.email,
-            razorpayPaymentId: response.razorpay_payment_id, // save payment ID
-          });
+          // Confirm booking with payment ID
+          await confirmBookingPayment(user, bookingId, response.razorpay_payment_id);
           navigate("/dashboard", { state: { justBooked: true } });
         } catch (err) {
-          setBookingError(`Booking failed: ${err.message}`);
+          if (err.message === "OVERRIDDEN") {
+            setBookingError("Payment went through, but your reservation was released to a higher-paying request. An auto-refund has been initiated.");
+          } else {
+            setBookingError(`Payment succeeded but booking confirmation failed: ${err.message}`);
+          }
           setSaving(false);
         }
       },
 
       modal: {
-        ondismiss: function () {
-          setBookingError("Payment cancelled. Please try again.");
+        ondismiss: async function () {
+          setSaving(true);
+          setBookingError("Releasing slot...");
+          try {
+            // Cancel and release the pending booking slot
+            await cancelPendingBooking(user, bookingId);
+          } catch (err) {
+            console.error("Failed to release slot:", err);
+          }
+          setBookingError("Payment cancelled. Your pending slot was released.");
+          setSaving(false);
         }
       }
     };
