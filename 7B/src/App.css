@@ -1494,3 +1494,226 @@ footer {
   border-radius: 50%;
   flex-shrink: 0;
 }
+
+/* ── PREVENT BODY SCROLL WHEN MODAL OPEN ── */
+body.modal-open {
+  overflow: hidden;
+}
+
+/* ── MODALS STYLING ── */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(12, 8, 6, 0.75);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  animation: fadeIn 0.25s ease-out;
+  padding: 20px;
+}
+
+.modal-content {
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  position: relative;
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.modal-close {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #333;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s;
+  z-index: 10;
+}
+
+.modal-close:hover {
+  background: #ffffff;
+  transform: scale(1.1) rotate(90deg);
+  color: var(--brand, #6b3a1f);
+}
+
+/* Space Details Modal Specifics */
+.space-modal {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.space-modal-img {
+  width: 100%;
+  height: 250px;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+
+.space-modal-body {
+  padding: 30px;
+}
+
+.space-modal-body h2 {
+  font-size: 1.8rem;
+  color: var(--text-dark, #2b160c);
+  margin-bottom: 5px;
+}
+
+.space-modal-subtitle {
+  font-size: 0.95rem;
+  color: var(--brand, #6b3a1f);
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.space-modal-body p {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--text-muted, #5c5552);
+  margin-bottom: 25px;
+}
+
+.space-modal-amenities {
+  margin-bottom: 30px;
+}
+
+.space-modal-amenities h4 {
+  font-size: 1rem;
+  color: var(--text-dark, #2b160c);
+  margin-bottom: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.space-modal-amenities ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.space-modal-amenities li {
+  font-size: 0.9rem;
+  color: var(--text-muted, #5c5552);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.space-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding-top: 25px;
+  margin-top: 10px;
+}
+
+.space-modal-price {
+  font-size: 1rem;
+  color: var(--text-muted, #5c5552);
+}
+
+.space-modal-price strong {
+  font-size: 1.8rem;
+  color: var(--text-dark, #2b160c);
+  font-weight: 800;
+}
+
+/* Food Modal Specifics */
+.food-modal {
+  padding: 40px;
+  text-align: center;
+}
+
+.food-modal-icon {
+  font-size: 3rem;
+  margin-bottom: 15px;
+  animation: bounce 1.5s infinite;
+}
+
+.food-modal h2 {
+  font-size: 1.8rem;
+  color: var(--text-dark, #2b160c);
+  margin-bottom: 15px;
+}
+
+.food-modal-desc {
+  font-size: 0.98rem;
+  line-height: 1.7;
+  color: var(--text-muted, #5c5552);
+  margin-bottom: 30px;
+}
+
+.food-modal-desc strong {
+  color: var(--brand, #6b3a1f);
+}
+
+.food-modal-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+/* Keyframes Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+/* 💻 Mobile Adjustments */
+@media (max-width: 600px) {
+  .food-modal-actions {
+    grid-template-columns: 1fr;
+  }
+  .space-modal-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 15px;
+    text-align: center;
+  }
+  .space-modal-body {
+    padding: 20px;
+  }
+}
