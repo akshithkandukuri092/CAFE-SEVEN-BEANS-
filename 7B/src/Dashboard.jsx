@@ -39,7 +39,7 @@ function timeAgo(isoStr) {
 }
 
 function canCancelBooking(booking) {
-  if (booking.status !== "confirmed" && booking.status !== "pending") return false;
+  if (booking.status !== "confirmed" && booking.status !== "pending" && booking.status !== "paid") return false;
   const today = new Date().toISOString().split("T")[0];
   if (booking.date !== today) return true;
   if (!booking.slot) return true;
@@ -49,7 +49,8 @@ function canCancelBooking(booking) {
 }
 
 const STATUS_META = {
-  pending: { label: "Pending Approval", color: "#f59e0b", bg: "#fef3c7" },
+  pending: { label: "Awaiting Payment", color: "#f59e0b", bg: "#fef3c7" },
+  paid: { label: "Pending Approval", color: "#6b3a1f", bg: "#f5ede4" },
   confirmed: { label: "Confirmed", color: "#16a34a", bg: "#dcfce7" },
   completed: { label: "Completed", color: "#0057b8", bg: "#e8f0fc" },
   cancelled: { label: "Cancelled", color: "#dc2626", bg: "#fee2e2" },
@@ -333,13 +334,13 @@ export default function Dashboard() {
 
             {/* Filter tabs */}
             <div className="db-filter-tabs">
-              {["all", "pending", "confirmed", "completed", "cancelled", "nandan"].map(tab => (
+              {["all", "pending", "paid", "confirmed", "completed", "cancelled"].map(tab => (
                 <button
                   key={tab}
                   className={`db-filter-tab ${activeTab === tab ? "active" : ""}`}
                   onClick={() => setActiveTab(tab)}
                 >
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  {tab === "paid" ? "Pending Approval" : tab === "pending" ? "Awaiting Payment" : tab.charAt(0).toUpperCase() + tab.slice(1)}
                   <span className="db-tab-count">
                     {tab === "all" ? bookings.length : bookings.filter(b => b.status === tab).length}
                   </span>
@@ -377,6 +378,12 @@ export default function Dashboard() {
                             <span style={{ display: "flex", alignItems: "center", gap: "4px" }}><Timer size={14} /> {b.duration}</span>
                             <span style={{ display: "flex", alignItems: "center", gap: "4px" }}><Users size={14} /> {b.guests} {b.guests === 1 ? "guest" : "guests"}</span>
                           </div>
+                          {(b.guestName || b.guestPhone) && (
+                            <div className="db-booking-guest" style={{ fontSize: "0.8rem", color: "#6b3a1f", marginTop: "6px", display: "flex", flexWrap: "wrap", gap: "8px", fontWeight: "500" }}>
+                              <span>👤 Guest: {b.guestName || b.userName}</span>
+                              {b.guestPhone && <span>📞 Phone: {b.guestPhone}</span>}
+                            </div>
+                          )}
                           {b.foodItems && b.foodItems.length > 0 && (
                             <div className="db-booking-food" style={{ display: "flex", alignItems: "flex-start", gap: "6px" }}>
                               <Utensils size={14} style={{ marginTop: "2px", flexShrink: 0 }} /> {b.foodItems.map(f => `${f.name} ×${f.qty}`).join(", ")}
@@ -396,12 +403,12 @@ export default function Dashboard() {
                           {sm.label}
                         </div>
                         <div className="db-booking-actions">
-                          {(b.status === "confirmed" || b.status === "pending") && canCancelBooking(b) && (
+                          {(b.status === "confirmed" || b.status === "pending" || b.status === "paid") && canCancelBooking(b) && (
                             <button className="db-cancel-btn" onClick={() => handleCancel(b)}>
                               Cancel
                             </button>
                           )}
-                          {(b.status === "confirmed" || b.status === "pending") && !canCancelBooking(b) && (
+                          {(b.status === "confirmed" || b.status === "pending" || b.status === "paid") && !canCancelBooking(b) && (
                             <span style={{ fontSize: "0.73rem", color: "#8b93b0", padding: "5px 10px", display: "flex", alignItems: "center", gap: "4px" }}>
                               <Lock size={12} /> Cancel locked
                             </span>

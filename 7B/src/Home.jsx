@@ -66,7 +66,7 @@ export default function Home() {
   const spaces = [
     {
       id: "workspace",
-      image: "/workspace.jpeg",
+      image: "/f.webp",
       title: "Workspace",
       subtitle: "6 private pods available",
       desc: "Get in the zone. We've set up quiet, comfy pods with fast Wi-Fi and plenty of plugs so you can actually get things done. Oh, and your first coffee is on us.",
@@ -76,7 +76,7 @@ export default function Home() {
     },
     {
       id: "birthday",
-      image: "/birthday.jpg",
+      image: "/c.jpeg",
       title: "Birthday Hall",
       subtitle: "2 exclusive event halls",
       desc: "Throw a party they'll actually remember. We'll handle the decorations, the cake, and the cleanup, so you can just show up and celebrate with your favourite people.",
@@ -86,7 +86,7 @@ export default function Home() {
     },
     {
       id: "conference",
-      image: "/meeting.jpg",
+      image: "/d.webp",
       title: "Conference Room",
       subtitle: "2 professional meeting rooms",
       desc: "Ditch the boring boardroom. We've got all the tech you need (projectors, whiteboards, fast Wi-Fi) plus the good coffee and catered breaks your team actually wants.",
@@ -152,6 +152,7 @@ export default function Home() {
       { name: "Mango Lassi", desc: "Thick Alphonso mango blended with yogurt", price: 140 },
       { name: "Strawberry Smoothie", desc: "Fresh strawberries, banana and milk", price: 160 },
       { name: "Virgin Mojito", desc: "Lime, mint, sugar and sparkling water", price: 130 },
+      { name: "Chocolate Shake", desc: "Lime, mint, sugar and sparkling water", price: 150 },
     ],
     Ice: [
       { name: "Filter vanila", desc: "South Indian drip coffee, hot & strong", price: 80 },

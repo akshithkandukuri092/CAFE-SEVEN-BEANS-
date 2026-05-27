@@ -13,6 +13,8 @@ const bookingSchema = new mongoose.Schema(
     userId:    { type: String, required: true, index: true }, // Firebase UID
     userName:  { type: String, default: "" },
     userEmail: { type: String, default: "" },
+    guestName:  { type: String, default: "" },
+    guestPhone: { type: String, default: "" },
 
     // ── What was booked ─────────────────────────────────────────────
     spaceId:    { type: String, required: true },   // "workspace" | "birthday" | "conference" | …
@@ -41,7 +43,7 @@ const bookingSchema = new mongoose.Schema(
     // ── Lifecycle ───────────────────────────────────────────────────
     status: {
       type: String,
-      enum: ["pending", "confirmed", "completed", "cancelled"],
+      enum: ["pending", "paid", "confirmed", "completed", "cancelled"],
       default: "pending",
       index: true,
     },
@@ -51,6 +53,9 @@ const bookingSchema = new mongoose.Schema(
     // Who cancelled: "user" or "admin" — helps frontend show distinct badge
     cancelledBy: { type: String, enum: ["user", "admin", null], default: null },
     cancelReason: { type: String, default: "" },
+    refundStatus: { type: String, enum: ["none", "pending", "refunded"], default: "none" },
+    refundAmount: { type: Number, default: 0 },
+    refundProcessedAt: { type: Date, default: null },
   },
   {
     timestamps: true,   // adds createdAt / updatedAt automatically

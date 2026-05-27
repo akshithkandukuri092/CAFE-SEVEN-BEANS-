@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500;600&display=swap');
 
 *,
 *::before,
@@ -98,6 +98,11 @@ img {
   color: var(--accent);
 }
 
+.brand-logo-text {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+}
+
 .nav-links {
   display: flex;
   gap: 4px;
@@ -172,22 +177,12 @@ img {
 
 /* ── HERO ── */
 .hero {
-  background: linear-gradient(135deg, #3e1f0a 0%, #6b3a1f 60%, #9a5530 100%);
+  background: linear-gradient(135deg, rgba(62, 31, 10, 0.82) 0%, rgba(107, 58, 31, 0.82) 60%, rgba(154, 85, 48, 0.82) 100%), url('/c.jpeg') no-repeat center center;
+  background-size: cover;
   padding: 56px 48px 0;
   position: relative;
   overflow: hidden;
   min-height: 420px;
-}
-
-.hero::before {
-  content: '☕';
-  position: absolute;
-  top: -20px;
-  right: 40px;
-  font-size: 200px;
-  opacity: 0.05;
-  line-height: 1;
-  pointer-events: none;
 }
 
 .hero::after {

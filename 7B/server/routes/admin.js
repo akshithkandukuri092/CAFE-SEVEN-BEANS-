@@ -3,7 +3,8 @@ import Booking      from "../models/Booking.js";
 import Review       from "../models/Review.js";
 import CafeSettings from "../models/CafeSettings.js";
 import { verifyToken } from "../middleware/auth.js";
-import { sendBookingConfirmation, sendBookingCancellation, sendBookingCompletion } from "../utils/emailService.js";
+import { sendBookingConfirmation, sendBookingCancellation, sendBookingCompletion, sendRefundConfirmation } from "../utils/emailService.js";
+import { autoCompletePastBookings } from "../utils/bookingCleanup.js";
 
 const router = express.Router();
 
@@ -33,6 +34,9 @@ router.use(verifyToken, adminOnly);
 // GET /api/admin/bookings
 router.get("/bookings", async (req, res) => {
   try {
+    // Lazy cleanup of past bookings
+    await autoCompletePastBookings();
+
     const { date, from, to, status, spaceId, page = 1, limit = 100 } = req.query;
     const filter = {};
     if (date)    filter.date    = date;
@@ -60,6 +64,9 @@ router.get("/bookings", async (req, res) => {
 // GET /api/admin/today
 router.get("/today", async (req, res) => {
   try {
+    // Lazy cleanup of past bookings
+    await autoCompletePastBookings();
+
     const today = new Date().toISOString().split("T")[0];
     const bookings = await Booking
       .find({ date: today, status: { $ne: "cancelled" } })
@@ -73,6 +80,9 @@ router.get("/today", async (req, res) => {
 // GET /api/admin/stats
 router.get("/stats", async (req, res) => {
   try {
+    // Lazy cleanup of past bookings
+    await autoCompletePastBookings();
+
     const today       = new Date().toISOString().split("T")[0];
     const todayDocs   = await Booking.find({ date: today }).lean();
     const allDocs     = await Booking.find({}).lean();
@@ -201,6 +211,9 @@ router.put("/bookings/:id/cancel", async (req, res) => {
     b.status = "cancelled";
     b.cancelledBy = "admin";
     b.cancelReason = req.body.reason || "Cancelled by admin";
+    if (b.grandTotal > 0 && b.razorpayPaymentId) {
+      b.refundStatus = "pending";
+    }
     await b.save();
 
     // Send cancellation email with refund
@@ -212,6 +225,38 @@ router.put("/bookings/:id/cancel", async (req, res) => {
 
     res.json(b);
   } catch (err) { res.status(500).json({ error: "Failed" }); }
+});
+
+// PUT /api/admin/bookings/:id/refund
+router.put("/bookings/:id/refund", async (req, res) => {
+  try {
+    const b = await Booking.findById(req.params.id);
+    if (!b) return res.status(404).json({ error: "Booking not found" });
+    if (b.status !== "cancelled") return res.status(400).json({ error: "Only cancelled bookings can be refunded" });
+    if (b.refundStatus === "refunded") return res.status(400).json({ error: "Refund has already been processed" });
+
+    // Calculate refund amount: 100% if cancelled by admin, otherwise 70% of spacePrice (food is non-refundable for user)
+    const refundAmount = b.cancelledBy === "admin"
+      ? (b.grandTotal || 0)
+      : Math.round((b.spacePrice || 0) * 0.7);
+
+    b.refundStatus = "refunded";
+    b.refundAmount = refundAmount;
+    b.refundProcessedAt = new Date();
+    await b.save();
+
+    // Send email notification to guest
+    try {
+      await sendRefundConfirmation(b);
+    } catch (emailError) {
+      console.error("Failed to send refund email:", emailError);
+    }
+
+    res.json(b);
+  } catch (err) {
+    console.error("Refund error:", err);
+    res.status(500).json({ error: "Failed to process refund" });
+  }
 });
 
 // GET /api/admin/export/csv  — download all bookings as CSV

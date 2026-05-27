@@ -146,13 +146,17 @@ export default function AdminDashboard() {
     try {
       const p = new URLSearchParams({ limit: "100" });
       if (fDate) p.set("date", fDate);
-      if (fStatus) p.set("status", fStatus);
+      if (view === "refunds") {
+        p.set("status", "cancelled");
+      } else if (fStatus) {
+        p.set("status", fStatus);
+      }
       if (fSpace) p.set("spaceId", fSpace);
       const data = await apiCall(user, `/bookings?${p}`);
       setBookings(data.bookings);
       setTotal(data.total);
     } catch (e) { setError(e.message); }
-  }, [user, fDate, fStatus, fSpace]);
+  }, [user, fDate, fStatus, fSpace, view]);
 
   // Initial load
   useEffect(() => {
@@ -163,14 +167,14 @@ export default function AdminDashboard() {
       .finally(() => setLoading(false));
   }, [user]);
 
-  useEffect(() => { if (view === "bookings") fetchBookings(); }, [view, fDate, fStatus, fSpace]);
+  useEffect(() => { if (view === "bookings" || view === "refunds") fetchBookings(); }, [view, fDate, fStatus, fSpace]);
 
   const flash = (msg) => { setSuccess(msg); setTimeout(() => setSuccess(""), 3000); };
 
   const refresh = async () => {
     setLoading(true); setError("");
     await Promise.all([fetchStats(), fetchToday(), fetchSettings(), fetchReviews(),
-    view === "bookings" ? fetchBookings() : Promise.resolve()]);
+    (view === "bookings" || view === "refunds") ? fetchBookings() : Promise.resolve()]);
     setLoading(false);
   };
 
@@ -179,12 +183,28 @@ export default function AdminDashboard() {
     setActionLoading(p => ({ ...p, [id]: action }));
     try {
       await apiCall(user, `/bookings/${id}/${action}`, { method: "PUT" });
-      const patch = b => (b._id === id) ? { ...b, status: action === "confirm" ? "confirmed" : action === "complete" ? "completed" : "cancelled" } : b;
+      const patch = b => (b._id === id) ? { 
+        ...b, 
+        status: action === "confirm" ? "confirmed" : action === "complete" ? "completed" : "cancelled",
+        refundStatus: (action === "cancel" && b.grandTotal > 0 && b.razorpayPaymentId) ? "pending" : b.refundStatus
+      } : b;
       setBookings(p => p.map(patch));
       setToday(p => p.map(patch));
       fetchStats();
       flash(`Booking ${action === "confirm" ? "confirmed" : action === "complete" ? "marked as completed" : "cancelled"} ✓`);
     } catch (e) { setError(e.message); }
+    finally { setActionLoading(p => { const n = { ...p }; delete n[id]; return n; }); }
+  };
+
+  const handleRefund = async (id, refundAmount, guestName) => {
+    setActionLoading(p => ({ ...p, [id]: "refund" }));
+    try {
+      await apiCall(user, `/bookings/${id}/refund`, { method: "PUT" });
+      const patch = b => (b._id === id) ? { ...b, refundStatus: "refunded", refundAmount } : b;
+      setBookings(p => p.map(patch));
+      fetchStats();
+      flash(`Refund of ₹${refundAmount} successfully processed for ${guestName}! ✓`);
+    } catch (e) { setError("Refund failed: " + e.message); }
     finally { setActionLoading(p => { const n = { ...p }; delete n[id]; return n; }); }
   };
 
@@ -300,6 +320,7 @@ export default function AdminDashboard() {
     { id: "overview", icon: <LayoutDashboard size={18} />, label: "Overview" },
     { id: "today", icon: <Calendar size={18} />, label: "Today", badge: stats?.today?.confirmed },
     { id: "bookings", icon: <ClipboardList size={18} />, label: "All Bookings" },
+    { id: "refunds", icon: <Ban size={18} />, label: "Refunds & Cancelled" },
     { id: "peak_hours", icon: <Clock size={18} />, label: "Peak Hours" },
     { id: "settings", icon: <Settings size={18} />, label: "Cafe Settings" },
     { id: "export", icon: <Download size={18} />, label: "Export Data" },
@@ -551,6 +572,7 @@ export default function AdminDashboard() {
               <select className="adm-filter-select" value={fStatus} onChange={e => setFStatus(e.target.value)}>
                 <option value="">All Statuses</option>
                 <option value="pending">Pending</option>
+                <option value="paid">Paid (Pending Approval)</option>
                 <option value="confirmed">Confirmed</option>
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
@@ -779,6 +801,140 @@ export default function AdminDashboard() {
             </div>
         )}
 
+        {/* ════════════════ REFUNDS & CANCELLED ════════════════ */}
+        {view === "refunds" && (
+          <>
+            <div className="adm-filter-bar">
+              <input type="date" className="adm-filter-input" value={fDate} onChange={e => setFDate(e.target.value)} />
+              <select className="adm-filter-select" value={fSpace} onChange={e => setFSpace(e.target.value)}>
+                <option value="">All Spaces</option>
+                <option value="workspace">{SPACE_LABELS.workspace}</option>
+                <option value="birthday">{SPACE_LABELS.birthday}</option>
+                <option value="conference">{SPACE_LABELS.conference}</option>
+                <option value="cafe">{SPACE_LABELS.cafe}</option>
+              </select>
+              {(fDate || fSpace) && (
+                <button className="adm-btn" onClick={() => { setFDate(""); setFSpace(""); }}>✕ Clear</button>
+              )}
+              <span className="adm-filter-count">{bookings.length} cancelled bookings</span>
+            </div>
+            
+            {loading ? <div className="adm-loading"><div className="adm-spinner" /> Loading…</div>
+              : bookings.length === 0 ? <div className="adm-empty"><div className="adm-empty-icon"><Ban size={40} strokeWidth={1} /></div><h3>No cancelled bookings found</h3></div>
+                : (
+                  <div className="adm-table-wrap">
+                    <table className="adm-table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Time</th>
+                          <th>Guest Details</th>
+                          <th>Space / Unit</th>
+                          <th>Paid Amount</th>
+                          <th>Refund Status</th>
+                          <th>Actions / Info</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {bookings.map(b => {
+                          const refundAmount = b.cancelledBy === "admin"
+                            ? (b.grandTotal || 0)
+                            : Math.round((b.spacePrice || 0) * 0.7);
+                          const cuttingCharges = (b.grandTotal || 0) - refundAmount;
+                          return (
+                            <tr key={b._id} className="refund-row">
+                              <td><strong style={{ fontSize: "0.83rem" }}>{formatDate(b.date)}</strong></td>
+                              <td><strong>{formatTime(b.slot)}</strong></td>
+                              <td>
+                                <div className="adm-booking-user">
+                                  {b.guestName && b.guestName !== b.userName ? (
+                                    <>
+                                      <span>{b.guestName}</span>
+                                      <div style={{ fontSize: "0.7rem", color: "var(--adm-muted)", fontStyle: "italic", fontWeight: "normal", marginTop: "2px" }}>
+                                        Booked by {b.userName || "—"}
+                                      </div>
+                                    </>
+                                  ) : (
+                                    b.guestName || b.userName || "—"
+                                  )}
+                                </div>
+                                <div className="adm-booking-email">{b.userEmail}</div>
+                                {b.guestPhone && (
+                                  <div style={{ fontSize: "0.74rem", color: "var(--adm-muted)", marginTop: "2px", fontWeight: "500" }}>
+                                    📞 {b.guestPhone}
+                                  </div>
+                                )}
+                              </td>
+                              <td>
+                                <span className="adm-space-chip">
+                                  {typeof b.spaceIcon === "string" && b.spaceIcon.startsWith("/") ? <img src={b.spaceIcon} alt="" style={{ height: "1em", width: "auto" }} /> : b.spaceIcon}
+                                  {" "}{b.spaceLabel}
+                                </span>
+                                <div style={{ fontSize: "0.74rem", color: "var(--adm-muted)", marginTop: 3 }}>
+                                  {b.unitLabel}
+                                </div>
+                              </td>
+                              <td>
+                                <div className="adm-amount" style={{ fontWeight: 700 }}>{formatCurrency(b.grandTotal)}</div>
+                                {b.spacePrice > 0 && <div style={{ fontSize: "0.72rem", color: "var(--adm-muted)" }}>Space: {formatCurrency(b.spacePrice)}</div>}
+                                {b.foodTotal > 0 && <div style={{ fontSize: "0.72rem", color: "var(--adm-muted)" }}>Food: {formatCurrency(b.foodTotal)}</div>}
+                              </td>
+                              <td>
+                                {b.refundStatus === "refunded" ? (
+                                  <span className="adm-badge completed" style={{ background: "var(--adm-green-pale)", color: "var(--adm-green)" }}>
+                                    Refunded ({formatCurrency(b.refundAmount)})
+                                  </span>
+                                ) : b.refundStatus === "pending" ? (
+                                  <span className="adm-badge pending" style={{ background: "var(--adm-gold-pale)", color: "var(--adm-gold)" }}>
+                                    Pending Refund
+                                  </span>
+                                ) : (
+                                  <span className="adm-badge cancelled" style={{ background: "#f3f4f6", color: "#6b7280" }}>
+                                    No Refund
+                                  </span>
+                                )}
+                              </td>
+                              <td>
+                                {b.refundStatus === "pending" ? (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                                    <div style={{ fontSize: "0.75rem", color: "var(--adm-text)", fontWeight: 500 }}>
+                                      Refund Amount: <strong style={{ color: "var(--adm-green)" }}>{formatCurrency(refundAmount)}</strong>
+                                      <div style={{ fontSize: "0.68rem", color: "var(--adm-muted)" }}>
+                                        {b.cancelledBy === "admin" ? "No cutting fee (100% Admin Cancel)" : `Cutting fee: ${formatCurrency(cuttingCharges)}`}
+                                      </div>
+                                    </div>
+                                    <button 
+                                      className="adm-btn complete"
+                                      disabled={!!actionLoading[b._id]}
+                                      onClick={() => handleRefund(b._id, refundAmount, b.guestName || b.userName)}
+                                      style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "6px 12px", background: "var(--adm-green)", color: "white", width: "fit-content", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 700 }}
+                                    >
+                                      {actionLoading[b._id] === "refund" ? "Processing…" : "Process Refund"}
+                                    </button>
+                                  </div>
+                                ) : b.refundStatus === "refunded" ? (
+                                  <div style={{ fontSize: "0.75rem", color: "var(--adm-muted)" }}>
+                                    Refunded <strong style={{ color: "var(--adm-green)" }}>{formatCurrency(b.refundAmount)}</strong>
+                                    {b.refundProcessedAt && (
+                                      <div style={{ fontSize: "0.68rem" }}>
+                                        on {new Date(b.refundProcessedAt).toLocaleDateString("en-IN")}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span style={{ fontSize: "0.75rem", color: "var(--adm-muted)" }}>—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+          </>
+        )}
+
         {/* ════════════════ EXPORT ════════════════ */}
         {view === "export" && (
           <div className="adm-settings-card" style={{ maxWidth: 520, margin: "40px auto 0" }}>
@@ -868,8 +1024,24 @@ function BookingTable({ rows, actionLoading, doAction, showDate, hideActions }) 
                 {b.slots?.length > 1 && <div style={{ fontSize: "0.72rem", color: "var(--adm-muted)" }}>{b.slots.length} slots</div>}
               </td>
               <td>
-                <div className="adm-booking-user">{b.userName || "—"}</div>
+                <div className="adm-booking-user">
+                  {b.guestName && b.guestName !== b.userName ? (
+                    <>
+                      <span>{b.guestName}</span>
+                      <div style={{ fontSize: "0.7rem", color: "var(--adm-muted)", fontStyle: "italic", fontWeight: "normal", marginTop: "2px" }}>
+                        Booked by {b.userName || "—"}
+                      </div>
+                    </>
+                  ) : (
+                    b.guestName || b.userName || "—"
+                  )}
+                </div>
                 <div className="adm-booking-email">{b.userEmail}</div>
+                {b.guestPhone && (
+                  <div style={{ fontSize: "0.74rem", color: "var(--adm-muted)", marginTop: "2px", fontWeight: "500" }}>
+                    📞 {b.guestPhone}
+                  </div>
+                )}
               </td>
               <td>
                 <span className="adm-space-chip">
@@ -888,7 +1060,7 @@ function BookingTable({ rows, actionLoading, doAction, showDate, hideActions }) 
               {!hideActions && (
                 <td>
                   <div className="adm-actions">
-                    {b.status === "pending" && (
+                    {(b.status === "pending" || b.status === "paid") && (
                       <button className="adm-btn confirm"
                         disabled={!!actionLoading[b._id]}
                         onClick={() => doAction(b._id, "confirm")} style={{ display: "flex", alignItems: "center", gap: "4px", background: "var(--adm-brand)", color: "white" }}>

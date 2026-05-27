@@ -4,6 +4,7 @@ import Review from "../models/Review.js";
 import CafeSettings from "../models/CafeSettings.js";
 import { verifyToken } from "../middleware/auth.js";
 import { sendBookingConfirmation, sendBookingCancellation } from "../utils/emailService.js";
+import { autoCompletePastBookings } from "../utils/bookingCleanup.js";
 
 // Helper: get or create settings singleton
 async function getSettings() {
@@ -39,6 +40,9 @@ router.get("/availability", async (req, res) => {
     if (!spaceId || !date) {
       return res.status(400).json({ error: "spaceId and date are required" });
     }
+
+    // Lazy cleanup of past bookings
+    await autoCompletePastBookings();
 
     // Clean up expired pending bookings (older than 10 minutes)
     await Booking.deleteMany({
@@ -119,7 +123,7 @@ router.post("/", verifyToken, async (req, res) => {
       unitId, unitLabel, unitIcon,
       date, slot, slots, duration, durationHrs,
       guests, spacePrice, foodItems, foodTotal, grandTotal,
-      userName, userEmail,
+      userName, userEmail, guestName, guestPhone,
     } = req.body;
 
     // ── Validate required fields ──────────────────────────────────────────
@@ -216,6 +220,8 @@ router.post("/", verifyToken, async (req, res) => {
       userId: req.user.uid,
       userName: userName || req.user.name || req.user.email?.split("@")[0] || "",
       userEmail: userEmail || req.user.email || "",
+      guestName: guestName || userName || req.user.name || req.user.email?.split("@")[0] || "",
+      guestPhone: guestPhone || "",
       spaceId, spaceLabel, spaceIcon,
       unitId, unitLabel, unitIcon,
       date,
@@ -273,18 +279,11 @@ router.put("/:id/confirm-payment", verifyToken, async (req, res) => {
       return res.status(400).json({ error: `Booking is already ${booking.status}` });
     }
 
-    booking.status = "confirmed";
+    booking.status = "paid";
     booking.razorpayPaymentId = razorpayPaymentId;
     await booking.save();
 
-    console.log("✅ Booking confirmed:", booking._id, "with payment:", razorpayPaymentId);
-
-    // Send confirmation email
-    try {
-      await sendBookingConfirmation(booking);
-    } catch (emailError) {
-      console.error("Failed to send confirmation email:", emailError);
-    }
+    console.log("✅ Booking payment received (awaiting admin confirmation):", booking._id, "with payment:", razorpayPaymentId);
 
     res.json(booking);
   } catch (err) {
@@ -322,6 +321,9 @@ router.delete("/:id/cancel-pending", verifyToken, async (req, res) => {
 // ── GET /api/bookings  — fetch all bookings for the logged-in user ────────
 router.get("/", verifyToken, async (req, res) => {
   try {
+    // Lazy cleanup of past bookings
+    await autoCompletePastBookings();
+
     const bookings = await Booking
       .find({ userId: req.user.uid })
       .sort({ createdAt: -1 })
@@ -390,6 +392,9 @@ router.put("/:id/cancel", verifyToken, async (req, res) => {
 
     booking.status = "cancelled";
     booking.cancelledBy = "user";
+    if (booking.grandTotal > 0 && booking.razorpayPaymentId) {
+      booking.refundStatus = "pending";
+    }
     await booking.save();
 
     // Send cancellation email with refund

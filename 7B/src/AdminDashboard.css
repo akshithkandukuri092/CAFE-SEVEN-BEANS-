@@ -573,6 +573,7 @@
 }
 
 .adm-badge.pending    { background: var(--adm-gold-pale);  color: var(--adm-gold);  }
+.adm-badge.paid       { background: var(--adm-brand-pale); color: var(--adm-brand); }
 .adm-badge.confirmed  { background: var(--adm-blue-pale);  color: var(--adm-blue);  }
 .adm-badge.completed  { background: var(--adm-green-pale); color: var(--adm-green); }
 .adm-badge.cancelled  { background: var(--adm-red-pale);   color: var(--adm-red);   }

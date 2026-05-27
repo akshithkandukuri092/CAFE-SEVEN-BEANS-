@@ -327,6 +327,43 @@ export async function cancelBooking(user, bookingId) {
   return updated;
 }
 
+/**
+ * Processes a refund for a cancelled booking.
+ */
+export async function processBookingRefund(user, bookingId) {
+  if (!user) throw new Error("NOT_LOGGED_IN");
+
+  let token;
+  try {
+    token = await user.getIdToken(true);
+  } catch {
+    throw new Error("AUTH_ERROR");
+  }
+
+  const res = await fetch(`${API_BASE}/admin/bookings/${bookingId}/refund`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || "Failed to process refund");
+  }
+
+  const updated = await res.json();
+
+  // Update local storage mirror
+  const all = ls_get("sb_bookings", []);
+  ls_set("sb_bookings", all.map(b =>
+    (b._id === bookingId || b.id === bookingId) ? { ...b, refundStatus: "refunded", refundAmount: updated.refundAmount } : b
+  ));
+
+  return updated;
+}
+
 // ── Reviews ───────────────────────────────────────────────────────
 
 export function saveReview(reviewData) {

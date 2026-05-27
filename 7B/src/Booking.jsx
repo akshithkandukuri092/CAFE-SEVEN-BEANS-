@@ -94,6 +94,9 @@ export const MENU_ITEMS = [
   { id: "m20", cat: "Health", name: "Green Salad", desc: "A mix of fresh garden greens", price: 180 },
   { id: "m21", cat: "Health", name: "Caesar Salad", desc: "Lettuce, parmesan & croutons", price: 225 },
   { id: "m22", cat: "Health", name: "Greek Salad", desc: "Cucumbers, olives, cherry tomato & feta", price: 225 },
+  { id: "m23", cat: "Drinks", name: "Chocolate Shake", desc: "Creamy cocoa blended with cold milk", price: 150 },
+
+
 ];
 
 const STEPS = ["Pick Your Seat", "Food Pre-order", "Review & Confirm"];
@@ -360,12 +363,21 @@ export default function Booking() {
   const [saving, setSaving] = useState(false);
   const [bookingError, setBookingError] = useState("");
   const [settings, setSettings] = useState(null);
+  const [bookForSomeoneElse, setBookForSomeoneElse] = useState(false);
+  const [guestName, setGuestName] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
 
   useEffect(() => {
     getPublicSettings().then(s => {
       if (s) setSettings(s);
     });
   }, []);
+
+  useEffect(() => {
+    if (user && !bookForSomeoneElse) {
+      setGuestName(user.displayName || user.email.split("@")[0]);
+    }
+  }, [user, bookForSomeoneElse]);
 
   useEffect(() => {
     if (!user) {
@@ -384,7 +396,7 @@ export default function Booking() {
   useEffect(() => {
     setSelectedUnit("");
     setSelectedSlots([]);
-    
+
     // Auto-adjust guests if it exceeds maxGuests for the selected space
     const targetSpace = SPACES.find(s => s.id === spaceId);
     if (targetSpace && guests > targetSpace.maxGuests) {
@@ -454,6 +466,15 @@ export default function Booking() {
 
   // ── Secure Confirm Flow: Reserve pending booking, pay, then confirm ──
   const handleConfirm = async () => {
+    if (!guestName.trim()) {
+      setBookingError("Please enter the guest name under Guest Details.");
+      return;
+    }
+    if (!guestPhone.trim()) {
+      setBookingError("Please enter a valid contact phone number under Guest Details.");
+      return;
+    }
+
     setSaving(true);
     setBookingError("Checking slot availability & reserving slot...");
 
@@ -472,6 +493,8 @@ export default function Booking() {
       guests, spacePrice, foodItems, foodTotal, grandTotal,
       userName: user.displayName || user.email.split("@")[0],
       userEmail: user.email,
+      guestName: guestName.trim() || user.displayName || user.email.split("@")[0],
+      guestPhone: guestPhone.trim(),
     };
 
     // If total is 0 (free spaces like "Just Coffee"), skip payment and create direct confirmed booking
@@ -516,8 +539,9 @@ export default function Booking() {
       description: `Booking: ${space.label}`,
       image: "/favicon.ico",
       prefill: {
-        name: user.displayName || user.email.split("@")[0],
+        name: guestName.trim() || user.displayName || user.email.split("@")[0],
         email: user.email,
+        contact: guestPhone.trim(),
       },
       theme: { color: "#6b3a1f" },
 
@@ -593,7 +617,7 @@ export default function Booking() {
             const isActive = i === step;
             const isDone = i < step;
             const isSelectable = i < step || (i === 1 && canGoToFood) || (i === 2 && canGoToReview);
-            
+
             return (
               <div
                 key={label}
@@ -706,10 +730,10 @@ export default function Booking() {
                             {!inCart
                               ? <button className="bk-add-btn" onClick={() => toggleAddon(item.id, item.price)}>+ Add</button>
                               : <div className="bk-qty-control">
-                                  <button onClick={() => changeQty(item.id, -1)}>−</button>
-                                  <span>{inCart.qty}</span>
-                                  <button onClick={() => changeQty(item.id, 1)}>+</button>
-                                </div>
+                                <button onClick={() => changeQty(item.id, -1)}>−</button>
+                                <span>{inCart.qty}</span>
+                                <button onClick={() => changeQty(item.id, 1)}>+</button>
+                              </div>
                             }
                           </div>
                         </div>
@@ -756,6 +780,64 @@ export default function Booking() {
                     <div className="bk-review-val">{val}</div>
                   </div>
                 ))}
+              </div>
+
+              {/* Guest Details Section */}
+              <div className="bk-guest-info-section" style={{ marginTop: 20, marginBottom: 20, padding: 16, background: "rgba(107, 58, 31, 0.05)", borderRadius: 12, border: "1px solid rgba(107, 58, 31, 0.15)" }}>
+                <h3 style={{ fontSize: "1rem", color: "#6b3a1f", marginBottom: 12, display: "flex", alignItems: "center", gap: 6, fontFamily: "var(--adm-serif, serif)", fontWeight: 600 }}>
+                  👤 Guest Details
+                </h3>
+                
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                  <input
+                    type="checkbox"
+                    id="bookForSomeoneElse"
+                    checked={bookForSomeoneElse}
+                    onChange={(e) => {
+                      setBookForSomeoneElse(e.target.checked);
+                      if (!e.target.checked) {
+                        setGuestName(user?.displayName || user?.email?.split("@")[0] || "");
+                      } else {
+                        setGuestName("");
+                      }
+                    }}
+                    style={{ cursor: "pointer", width: 16, height: 16, accentColor: "#6b3a1f" }}
+                  />
+                  <label htmlFor="bookForSomeoneElse" style={{ fontSize: "0.86rem", fontWeight: 600, color: "#3e1f0a", cursor: "pointer", userSelect: "none" }}>
+                    Booking for a relative or friend
+                  </label>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#5c3d2a", marginBottom: 6 }}>
+                      {bookForSomeoneElse ? "Guest Name *" : "Your Name *"}
+                    </label>
+                    <input
+                      type="text"
+                      className="bk-guest-input"
+                      style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #dbc9b8", borderRadius: 8, fontSize: "0.85rem", background: "white", color: "#2b1a10", outline: "none" }}
+                      value={guestName}
+                      onChange={(e) => setGuestName(e.target.value)}
+                      placeholder={bookForSomeoneElse ? "Enter relative or friend's name" : "Your Name"}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, color: "#5c3d2a", marginBottom: 6 }}>
+                      {bookForSomeoneElse ? "Guest Phone *" : "Your Phone *"}
+                    </label>
+                    <input
+                      type="tel"
+                      className="bk-guest-input"
+                      style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #dbc9b8", borderRadius: 8, fontSize: "0.85rem", background: "white", color: "#2b1a10", outline: "none" }}
+                      value={guestPhone}
+                      onChange={(e) => setGuestPhone(e.target.value)}
+                      placeholder="Enter contact phone number"
+                      required
+                    />
+                  </div>
+                </div>
               </div>
 
               {Object.keys(addons).length > 0 && (
