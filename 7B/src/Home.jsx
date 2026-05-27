@@ -211,6 +211,20 @@ export default function Home() {
           <a href="#reviews" onClick={() => setMenuOpen(false)}>Reviews</a>
           <a href="#about" onClick={() => setMenuOpen(false)}>About</a>
           <a href="#contact" onClick={() => setMenuOpen(false)}>Contact</a>
+          {/* Mobile-only Auth buttons */}
+          <div className="nav-auth-mobile">
+            {user ? (
+              <>
+                <button className="nav-login-mobile" onClick={() => { setMenuOpen(false); navigate("/dashboard"); }}>My Bookings</button>
+                <button className="nav-signup-mobile" onClick={() => { setMenuOpen(false); logout(); }}>Sign Out</button>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className="nav-login-mobile" onClick={() => setMenuOpen(false)}>Log In</Link>
+                <Link to="/signup" className="nav-signup-mobile" onClick={() => setMenuOpen(false)}>Sign Up</Link>
+              </>
+            )}
+          </div>
         </nav>
 
         <div className="nav-auth">
