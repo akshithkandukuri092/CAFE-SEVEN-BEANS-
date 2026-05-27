@@ -13,7 +13,8 @@ function App() {
   useEffect(() => {
     AOS.init({
       duration: 800, // Animation duration in ms
-      once: false, // Whether animation should happen only once - while scrolling down
+      once: true, // Animation happens only once for optimal scroll performance
+      disable: 'mobile', // Disable animations on mobile to prevent touch lag and horizontal scrolling gaps!
     });
   }, []);
 
