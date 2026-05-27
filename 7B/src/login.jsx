@@ -121,8 +121,9 @@ function Login({ defaultSignUp = false }) {
       "auth/popup-closed-by-user": "Sign-in popup was closed. Please try again.",
       "auth/too-many-requests": "Too many attempts. Please wait a moment.",
       "auth/invalid-credential": "Email or password is incorrect.",
+      "auth/unauthorized-domain": "This domain is not authorized. Please add it to the 'Authorized Domains' list in your Firebase Console (Authentication -> Settings).",
     };
-    return map[code] || "Something went wrong. Please try again.";
+    return map[code] || `Something went wrong. Please try again. (${code})`;
   };
 
   /* ── FORGOT PASSWORD PANEL ── */
